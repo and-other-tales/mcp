@@ -1,0 +1,25 @@
+{
+  "name": "uk-legislation-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for UK legislation from legislation.gov.uk",
+  "main": "build/index.js",
+  "bin": {
+    "uk-legislation-mcp": "./build/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc && chmod +x build/index.js",
+    "start": "node build/index.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.4.0",
+    "axios": "^1.6.7",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "typescript": "^5.3.3"
+  }
+} 
