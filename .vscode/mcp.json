@@ -11,6 +11,12 @@
     },
     "gitmcp": {
       "url": "https://gitmcp.io/idosal/git-mcp"
-    }
+    },
+     "xero-api": {
+      "url": "https://gitmcp.io/xeroapi/xero-node"
+    },
+    "xero-stock": {
+      "url": "https://gitmcp.io/xeroapi/xero-mcp-server"
+    }	
   }
 }
