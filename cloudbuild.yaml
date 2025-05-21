@@ -1,0 +1,107 @@
+# Cloud Build configuration for MCP servers
+steps:
+  # Build UK Legislation server
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '--target', 'uk-legislation',
+      '-t', 'gcr.io/$PROJECT_ID/uk-legislation-mcp:$COMMIT_SHA',
+      '-t', 'gcr.io/$PROJECT_ID/uk-legislation-mcp:latest',
+      '.'
+    ]
+
+  # Build HMRC server
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '--target', 'hmrc',
+      '-t', 'gcr.io/$PROJECT_ID/hmrc-mcp:$COMMIT_SHA',
+      '-t', 'gcr.io/$PROJECT_ID/hmrc-mcp:latest',
+      '.'
+    ]
+
+  # Build Dataset Creation server
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '--target', 'dataset-creation',
+      '-t', 'gcr.io/$PROJECT_ID/dataset-creation-mcp:$COMMIT_SHA',
+      '-t', 'gcr.io/$PROJECT_ID/dataset-creation-mcp:latest',
+      '.'
+    ]
+
+  # Push UK Legislation server
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/uk-legislation-mcp:$COMMIT_SHA']
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/uk-legislation-mcp:latest']
+
+  # Push HMRC server
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/hmrc-mcp:$COMMIT_SHA']
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/hmrc-mcp:latest']
+
+  # Push Dataset Creation server
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/dataset-creation-mcp:$COMMIT_SHA']
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/dataset-creation-mcp:latest']
+
+  # Deploy UK Legislation server to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args: [
+      'run', 'deploy', 'uk-legislation-mcp',
+      '--image', 'gcr.io/$PROJECT_ID/uk-legislation-mcp:$COMMIT_SHA',
+      '--region', 'us-central1',
+      '--platform', 'managed',
+      '--port', '8080',
+      '--memory', '512Mi',
+      '--cpu', '1',
+      '--max-instances', '10',
+      '--set-env-vars', 'NODE_ENV=production'
+    ]
+
+  # Deploy HMRC server to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args: [
+      'run', 'deploy', 'hmrc-mcp',
+      '--image', 'gcr.io/$PROJECT_ID/hmrc-mcp:$COMMIT_SHA',
+      '--region', 'us-central1',
+      '--platform', 'managed',
+      '--port', '8081',
+      '--memory', '512Mi',
+      '--cpu', '1',
+      '--max-instances', '10',
+      '--set-env-vars', 'NODE_ENV=production'
+    ]
+
+  # Deploy Dataset Creation server to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args: [
+      'run', 'deploy', 'dataset-creation-mcp',
+      '--image', 'gcr.io/$PROJECT_ID/dataset-creation-mcp:$COMMIT_SHA',
+      '--region', 'us-central1',
+      '--platform', 'managed',
+      '--port', '8082',
+      '--memory', '512Mi',
+      '--cpu', '1',
+      '--max-instances', '10',
+      '--set-env-vars', 'NODE_ENV=production,HF_TOKEN=${_HF_TOKEN}'
+    ]
+
+timeout: 1800s
+
+substitutions:
+  _HF_TOKEN: "" # Set this in Cloud Build trigger
+
+images:
+  - 'gcr.io/$PROJECT_ID/uk-legislation-mcp:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/uk-legislation-mcp:latest'
+  - 'gcr.io/$PROJECT_ID/hmrc-mcp:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/hmrc-mcp:latest'
+  - 'gcr.io/$PROJECT_ID/dataset-creation-mcp:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/dataset-creation-mcp:latest'

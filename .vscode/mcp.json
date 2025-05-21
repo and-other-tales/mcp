@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "modelcontextprotocol": {
+      "url": "https://gitmcp.io/modelcontextprotocol/servers"
+    },
+    "huggingface-datasets": {
+      "url": "https://gitmcp.io/huggingface/datasets"
+    },
+    "huggingface-transformers": {
+      "url": "https://gitmcp.io/huggingface/transformers"
+    },
+    "gitmcp": {
+      "url": "https://gitmcp.io/idosal/git-mcp"
+    }
+  }
+}

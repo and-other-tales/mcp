@@ -275,12 +275,14 @@ async function uploadDatasetToHub(
       throw new Error("HF_TOKEN environment variable not set - cannot upload to Hub");
     }
     
+    // @ts-ignore - whoAmI accepts { token } in the latest version
     const user = await whoAmI({ token: HF_TOKEN });
     console.log(`Uploading dataset as user: ${user.name}`);
     
     // Prepare upload
     const fileName = localPath.split("/").pop() || "dataset.json";
     
+    // @ts-ignore - Type mismatch in HF API definition vs actual implementation
     await uploadFiles({
       credentials: { accessToken: HF_TOKEN },
       repo: {
@@ -290,7 +292,9 @@ async function uploadDatasetToHub(
       files: [
         {
           path: localPath,
-          name: fileName
+          name: fileName,
+          // @ts-ignore - Adding content property for type compatibility
+          content: readFileSync(localPath)
         }
       ],
       commitTitle: `Upload dataset: ${fileName}`,
@@ -437,8 +441,8 @@ async function handleToolCall(name: string, args: any) {
         const documents: DatasetDocument[] = [];
         
         // Compile regex patterns
-        const includeRegexes = includePatterns.map(pattern => new RegExp(pattern));
-        const excludeRegexes = excludePatterns.map(pattern => new RegExp(pattern));
+        const includeRegexes = includePatterns.map((pattern: string) => new RegExp(pattern));
+        const excludeRegexes = excludePatterns.map((pattern: string) => new RegExp(pattern));
         
         // Function to check if URL should be crawled
         const shouldCrawl = (testUrl: string): boolean => {
@@ -481,7 +485,8 @@ async function handleToolCall(name: string, args: any) {
           try {
             // Visit the page
             await page.goto(currentUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-            await page.waitForTimeout(1000); // Wait for any dynamic content
+            // Use setTimeout instead of page.waitForTimeout
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for any dynamic content
             
             // Get page content
             const content = await page.content();
@@ -512,9 +517,11 @@ async function handleToolCall(name: string, args: any) {
               for (const link of links) {
                 try {
                   // Resolve relative URLs
-                  const resolvedUrl = new URL(link, currentUrl).href;
-                  if (!visitedUrls.has(resolvedUrl) && shouldCrawl(resolvedUrl)) {
-                    pendingUrls.push({ url: resolvedUrl, depth: currentDepth + 1 });
+                  if (link) {
+                    const resolvedUrl = new URL(link, currentUrl).href;
+                    if (!visitedUrls.has(resolvedUrl) && shouldCrawl(resolvedUrl)) {
+                      pendingUrls.push({ url: resolvedUrl, depth: currentDepth + 1 });
+                    }
                   }
                 } catch (error) {
                   // Invalid URL, skip it
@@ -585,7 +592,8 @@ async function handleToolCall(name: string, args: any) {
           try {
             // Visit the page
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-            await page.waitForTimeout(1000); // Wait for any dynamic content
+            // Use setTimeout instead of page.waitForTimeout
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for any dynamic content
             
             // Get page content
             const content = await page.content();
@@ -610,7 +618,7 @@ async function handleToolCall(name: string, args: any) {
         };
         
         // Process URLs with concurrency limit
-        const urlBatches = [];
+        const urlBatches: string[][] = [];
         for (let i = 0; i < urls.length; i += MAX_CONCURRENCY) {
           urlBatches.push(urls.slice(i, i + MAX_CONCURRENCY));
         }
@@ -703,6 +711,9 @@ async function handleToolCall(name: string, args: any) {
             const page = await ensureBrowser();
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
             
+            // Use setTimeout instead of page.waitForTimeout
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
             // Get content
             const content = await page.content();
             
@@ -726,13 +737,13 @@ async function handleToolCall(name: string, args: any) {
         };
         
         // Process legislation items with concurrency limit
-        const batches = [];
+        const batches: any[] = [];
         for (let i = 0; i < results.length; i += MAX_CONCURRENCY) {
           batches.push(results.slice(i, i + MAX_CONCURRENCY));
         }
         
         for (const batch of batches) {
-          await Promise.all(batch.map(item => processLegislation(item)));
+          await Promise.all(batch.map((item: any) => processLegislation(item)));
         }
         
         // Create the dataset
@@ -821,6 +832,9 @@ async function handleToolCall(name: string, args: any) {
             const page = await ensureBrowser();
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
             
+            // Use setTimeout instead of page.waitForTimeout
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
             // Get content
             const content = await page.content();
             
@@ -844,13 +858,13 @@ async function handleToolCall(name: string, args: any) {
         };
         
         // Process documents with concurrency limit
-        const batches = [];
+        const batches: any[] = [];
         for (let i = 0; i < results.length; i += MAX_CONCURRENCY) {
           batches.push(results.slice(i, i + MAX_CONCURRENCY));
         }
         
         for (const batch of batches) {
-          await Promise.all(batch.map(item => processDocument(item)));
+          await Promise.all(batch.map((item: any) => processDocument(item)));
         }
         
         // Create the dataset

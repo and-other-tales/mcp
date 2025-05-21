@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  uk-legislation:
+    build:
+      context: .
+      target: uk-legislation
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=development
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  hmrc:
+    build:
+      context: .
+      target: hmrc
+    ports:
+      - "8081:8081"
+    environment:
+      - NODE_ENV=development
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  dataset-creation:
+    build:
+      context: .
+      target: dataset-creation
+    ports:
+      - "8082:8082"
+    environment:
+      - NODE_ENV=development
+      - HF_TOKEN=${HF_TOKEN}
+    volumes:
+      - ./datasets-temp:/app/server/datasets-temp
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
