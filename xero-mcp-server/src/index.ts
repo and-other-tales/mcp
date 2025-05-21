@@ -217,37 +217,39 @@ server.tool(
   }
 );
 
-// Tool for Contact Group Management
+// Contact groups tool
 server.tool(
   "manage-contact-groups",
-  "Manage contact groups including creation, updates, and listing",
+  "Manage contact groups",
   {
-    action: z.enum(["list", "create", "update", "delete"]),
-    groupName: z.string().optional().describe("Name of the contact group"),
-    groupId: z.string().optional().describe("ID of the contact group"),
-    contacts: z.array(z.string()).optional().describe("Contact IDs to add/remove from group"),
+    action: z.enum(["create", "update", "delete", "view"]),
+    groupName: z.string().optional(),
+    groupId: z.string().optional(),
+    contacts: z.array(z.string()).optional(),
     status: z.enum(["ACTIVE", "ARCHIVED"]).optional()
   },
-  async ({ action, groupName, groupId, contacts, status }) => {
+  async ({ action, groupName, groupId, contacts, status }: {
+    action: "create" | "update" | "delete" | "view";
+    groupName?: string;
+    groupId?: string;
+    contacts?: string[];
+    status?: "ACTIVE" | "ARCHIVED";
+  }) => {
     try {
+      const tenant = xeroClient.tenants[0];
       let result;
-      const tenantId = xeroClient.tenants[0].tenantId;
 
-      switch(action) {
-        case "list":
-          result = await xeroClient.accountingApi.getContactGroups(tenantId);
-          break;
-
+      switch (action) {
         case "create":
-          result = await xeroClient.accountingApi.createContactGroup(tenantId, {
-            name: groupName,
+          result = await xeroClient.accountingApi.createContactGroup(tenant.tenantId, {
+            name: groupName!,
             status: status || "ACTIVE",
             contacts: contacts?.map(id => ({ contactID: id }))
           });
           break;
 
         case "update":
-          result = await xeroClient.accountingApi.updateContactGroup(tenantId, groupId, {
+          result = await xeroClient.accountingApi.updateContactGroup(tenant.tenantId, groupId!, {
             name: groupName,
             status,
             contacts: contacts?.map(id => ({ contactID: id }))
@@ -255,238 +257,18 @@ server.tool(
           break;
 
         case "delete":
-          result = await xeroClient.accountingApi.deleteContactGroup(tenantId, groupId);
+          result = await xeroClient.accountingApi.deleteContactGroup(tenant.tenantId, groupId!);
+          break;
+
+        case "view":
+          result = await xeroClient.accountingApi.getContactGroup(tenant.tenantId, groupId!);
           break;
       }
 
       return {
         content: [{
           type: "text",
-          text: JSON.stringify(result?.body || { status: "success" }, null, 2)
-        }]
-      };
-
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: `Error managing contact groups: ${error.message}`
-        }],
-        isError: true
-      };
-    }
-  }
-);
-
-// Tool for Financial Reports 
-server.tool(
-  "generate-financial-report",
-  "Generate financial reports and analysis",
-  {
-    reportType: z.enum(["profit-loss", "balance-sheet", "cash-flow"]).describe("Type of financial report to generate"),
-    fromDate: z.string().describe("Start date for report (YYYY-MM-DD)"),
-    toDate: z.string().describe("End date for report (YYYY-MM-DD)"),
-    trackingCategories: z.array(z.string()).optional().describe("Tracking categories to include")
-  },
-  async ({ reportType, fromDate, toDate, trackingCategories }) => {
-    try {
-      let reportData;
-      
-      switch(reportType) {
-        case "profit-loss":
-          const plReport = await xeroClient.accountingApi.getReportProfitAndLoss(
-            xeroClient.tenants[0].tenantId,
-            fromDate,
-            toDate,
-            trackingCategories?.join(",")
-          );
-          reportData = plReport.body;
-          break;
-          
-        case "balance-sheet":
-          const bsReport = await xeroClient.accountingApi.getReportBalanceSheet(
-            xeroClient.tenants[0].tenantId,
-            fromDate,
-            toDate
-          );
-          reportData = bsReport.body;
-          break;
-          
-        case "cash-flow":
-          const cfReport = await xeroClient.financeApi.getCashflow(
-            xeroClient.tenants[0].tenantId,
-            fromDate,
-            toDate
-          );
-          reportData = cfReport.body;
-          break;
-      }
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            reportType,  
-            period: { fromDate, toDate },
-            data: reportData
-          }, null, 2)
-        }]
-      };
-
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: `Error generating ${reportType} report: ${error.message}`
-        }],
-        isError: true
-      };
-    }
-  }
-);
-
-// Tool for Payroll Management
-server.tool(
-  "manage-payroll", 
-  "Manage employee payroll and payments",
-  {
-    action: z.enum(["create-payday", "process-timesheets", "update-leave", "view-payslips"]),
-    employeeId: z.string().describe("Employee ID"),
-    payPeriod: z.object({
-      startDate: z.string(),
-      endDate: z.string()
-    }).optional(),
-    details: z.object({
-      hoursWorked: z.number().optional(),
-      leaveHours: z.number().optional(),
-      leaveType: z.string().optional(),
-      paymentDate: z.string().optional()
-    }).optional()
-  },
-  async ({ action, employeeId, payPeriod, details }) => {
-    try {
-      let result;
-      
-      switch(action) {
-        case "create-payday":
-          result = await xeroClient.payrollAUApi.createPayRun(
-            xeroClient.tenants[0].tenantId,
-            {
-              payRun: {
-                payrollCalendarID: employeeId,
-                periodStartDate: payPeriod.startDate,
-                periodEndDate: payPeriod.endDate,
-                paymentDate: details.paymentDate
-              }
-            }
-          );
-          break;
-
-        case "process-timesheets":
-          result = await xeroClient.payrollAUApi.createTimesheet(
-            xeroClient.tenants[0].tenantId,
-            {
-              employeeID: employeeId,
-              startDate: payPeriod.startDate,
-              endDate: payPeriod.endDate,
-              numberOfUnits: details.hoursWorked
-            }
-          );
-          break;
-
-        case "update-leave":
-          result = await xeroClient.payrollAUApi.createLeaveApplication(
-            xeroClient.tenants[0].tenantId,
-            {
-              leaveTypeID: details.leaveType,
-              employeeID: employeeId,
-              startDate: payPeriod.startDate,
-              endDate: payPeriod.endDate,
-              periods: [{
-                periodStartDate: payPeriod.startDate,
-                periodEndDate: payPeriod.endDate,
-                numberOfUnits: details.leaveHours
-              }]
-            }
-          );
-          break;
-
-        case "view-payslips":
-          result = await xeroClient.payrollAUApi.getPayslip(
-            xeroClient.tenants[0].tenantId,
-            employeeId
-          );
-          break;
-      }
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify(result.body, null, 2)
-        }]
-      };
-
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: `Error managing payroll: ${error.message}`
-        }],
-        isError: true
-      };
-    }
-  }
-);
-
-// Tool for Tax Management
-server.tool(
-  "manage-tax",
-  "Manage tax calculations and returns",
-  {
-    action: z.enum(["calculate-vat", "prepare-return", "submit-return", "view-status"]),
-    period: z.object({
-      startDate: z.string(),
-      endDate: z.string()
-    }),
-    taxType: z.enum(["VAT", "GST", "PAYG"]),
-    details: z.object({
-      amount: z.number().optional(),
-      taxRate: z.number().optional(),
-      reference: z.string().optional()
-    }).optional()
-  },
-  async ({ action, period, taxType, details }) => {
-    try {
-      let result;
-      
-      switch(action) {
-        case "calculate-vat":
-          if (!details?.amount || !details?.taxRate) {
-            throw new Error("Amount and tax rate are required for VAT calculation");
-          }
-          result = await calculateTax(details.amount, details.taxRate);
-          break;
-          
-        case "prepare-return":
-          result = await prepareTaxReturn(period, taxType);
-          break;
-          
-        case "submit-return":
-          result = await submitTaxReturn(period, taxType, details || {});
-          break;
-          
-        case "view-status":
-          if (!details?.reference) {
-            throw new Error("Reference is required to view tax return status");
-          }
-          result = await getTaxReturnStatus(period, taxType, details.reference);
-          break;
-      }
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify(result, null, 2)
+          text: JSON.stringify(result?.body || {}, null, 2)
         }]
       };
 
@@ -495,7 +277,7 @@ server.tool(
       return {
         content: [{
           type: "text",
-          text: `Error managing tax: ${errorMessage}`
+          text: `Error managing contact groups: ${errorMessage}`
         }],
         isError: true
       };
@@ -503,67 +285,220 @@ server.tool(
   }
 );
 
-// Tool for Tracking Categories
+// Reports tool
 server.tool(
-  "manage-tracking-categories",
-  "Manage tracking categories for expense and revenue tracking",
+  "generate-report",
+  "Generate financial reports",
   {
-    action: z.enum(["list", "create", "update", "delete"]),
-    name: z.string().optional().describe("Name of the tracking category"),
-    status: z.enum(["ACTIVE", "ARCHIVED"]).optional(),
-    categoryId: z.string().optional().describe("ID of the tracking category"),
-    options: z.array(
-      z.object({
-        name: z.string(),
-        status: z.enum(["ACTIVE", "ARCHIVED"]).optional()
-      })
-    ).optional().describe("Options to add to the tracking category")
+    reportType: z.enum(["profit-loss", "balance-sheet", "cashflow", "trial-balance"]),
+    fromDate: z.string(),
+    toDate: z.string(),
+    trackingCategories: z.array(z.string()).optional()
   },
-  async ({ action, name, status, categoryId, options }) => {
+  async ({ reportType, fromDate, toDate, trackingCategories }: {
+    reportType: "profit-loss" | "balance-sheet" | "cashflow" | "trial-balance";
+    fromDate: string;
+    toDate: string;
+    trackingCategories?: string[];
+  }) => {
     try {
+      const tenant = xeroClient.tenants[0];
       let result;
-      const tenantId = xeroClient.tenants[0].tenantId;
 
-      switch(action) {
-        case "list":
-          result = await xeroClient.accountingApi.getTrackingCategories(tenantId);
+      switch (reportType) {
+        case "profit-loss":
+          result = await xeroClient.accountingApi.getReportProfitAndLoss(tenant.tenantId, fromDate, toDate);
           break;
 
-        case "create":
-          result = await xeroClient.accountingApi.createTrackingCategory(tenantId, {
-            name,
-            status: status || "ACTIVE",
-            options: options?.map(opt => ({
-              name: opt.name,
-              status: opt.status || "ACTIVE"
-            }))
-          });
+        case "balance-sheet":
+          result = await xeroClient.accountingApi.getReportBalanceSheet(tenant.tenantId, fromDate, toDate);
           break;
 
-        case "update":
-          result = await xeroClient.accountingApi.updateTrackingCategory(tenantId, categoryId, {
-            name,
-            status
-          });
+        case "cashflow":
+          result = await xeroClient.accountingApi.getReportCashflow(tenant.tenantId, fromDate, toDate);
           break;
 
-        case "delete":
-          result = await xeroClient.accountingApi.deleteTrackingCategory(tenantId, categoryId);
+        case "trial-balance":
+          result = await xeroClient.accountingApi.getReportTrialBalance(tenant.tenantId, fromDate, toDate);
           break;
       }
 
       return {
         content: [{
           type: "text",
-          text: JSON.stringify(result?.body || { status: "success" }, null, 2)
+          text: JSON.stringify(result?.body || {}, null, 2)
         }]
       };
 
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
       return {
         content: [{
           type: "text",
-          text: `Error managing tracking categories: ${error.message}`
+          text: `Error generating ${reportType} report: ${errorMessage}`
+        }],
+        isError: true
+      };
+    }
+  }
+);
+
+// Payroll tool
+server.tool(
+  "manage-payroll",
+  "Manage employee payroll",
+  {
+    action: z.enum(["process-pay", "request-leave", "view-payslips"]),
+    employeeId: z.string(),
+    payPeriod: z.object({
+      startDate: z.string(),
+      endDate: z.string()
+    }).optional(),
+    details: z.object({
+      payAmount: z.number().optional(),
+      leaveHours: z.number().optional()
+    }).optional()
+  },
+  async ({ action, employeeId, payPeriod, details }: {
+    action: "process-pay" | "request-leave" | "view-payslips";
+    employeeId: string;
+    payPeriod?: {
+      startDate: string;
+      endDate: string;
+    };
+    details?: {
+      payAmount?: number;
+      leaveHours?: number;
+    };
+  }) => {
+    try {
+      const tenant = xeroClient.tenants[0];
+      let result;
+
+      switch (action) {
+        case "process-pay":
+          result = await xeroClient.payrollAUApi.createPayrun(
+            tenant.tenantId,
+            {
+              employeeId,
+              payrollCalendarId: payPeriod!.startDate,
+              payAmount: details?.payAmount || 0
+            }
+          );
+          break;
+
+        case "request-leave":
+          result = await xeroClient.payrollAUApi.createLeaveApplication(
+            tenant.tenantId,
+            employeeId,
+            {
+              leaveTypeId: "ANNUAL",
+              startDate: payPeriod!.startDate,
+              endDate: payPeriod!.endDate,
+              periods: [{
+                numberOfUnits: details!.leaveHours
+              }]
+            }
+          );
+          break;
+
+        case "view-payslips":
+          result = await xeroClient.payrollAUApi.getPayslip(
+            tenant.tenantId,
+            employeeId
+          );
+          break;
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(result?.body || {}, null, 2)
+        }]
+      };
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      return {
+        content: [{
+          type: "text",
+          text: `Error managing payroll: ${errorMessage}`
+        }],
+        isError: true
+      };
+    }
+  }
+);
+
+// Tracking categories tool
+server.tool(
+  "manage-tracking",
+  "Manage tracking categories",
+  {
+    action: z.enum(["create", "update", "delete", "view"]),
+    name: z.string().optional(),
+    status: z.enum(["ACTIVE", "ARCHIVED"]).optional(),
+    categoryId: z.string().optional(),
+    options: z.array(z.object({
+      name: z.string(),
+      status: z.enum(["ACTIVE", "ARCHIVED"])
+    })).optional()
+  },
+  async ({ action, name, status, categoryId, options }: {
+    action: "create" | "update" | "delete" | "view";
+    name?: string;
+    status?: "ACTIVE" | "ARCHIVED";
+    categoryId?: string;
+    options?: Array<{
+      name: string;
+      status: "ACTIVE" | "ARCHIVED";
+    }>;
+  }) => {
+    try {
+      const tenant = xeroClient.tenants[0];
+      let result;
+
+      switch (action) {
+        case "create":
+          result = await xeroClient.accountingApi.createTrackingCategory(tenant.tenantId, {
+            name: name!,
+            status: status || "ACTIVE",
+            options: options?.map(opt => ({
+              name: opt.name,
+              status: opt.status
+            }))
+          });
+          break;
+
+        case "update":
+          result = await xeroClient.accountingApi.updateTrackingCategory(tenant.tenantId, categoryId!, {
+            name,
+            status
+          });
+          break;
+
+        case "delete":
+          result = await xeroClient.accountingApi.deleteTrackingCategory(tenant.tenantId, categoryId!);
+          break;
+
+        case "view":
+          result = await xeroClient.accountingApi.getTrackingCategory(tenant.tenantId, categoryId!);
+          break;
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(result?.body || {}, null, 2)
+        }]
+      };
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      return {
+        content: [{
+          type: "text",
+          text: `Error managing tracking categories: ${errorMessage}`
         }],
         isError: true
       };
