@@ -8,14 +8,148 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { XeroClient } from 'xero-node';
+import { BankTransaction, Contact, ManualJournal, TrackingCategory } from 'xero-node';
 
-// Define custom types
+// Define custom interfaces
 interface XeroConfig {
   clientId: string;
   clientSecret: string;
+  grantType: string;
   redirectUris?: string[];
-  grantType?: string;
   scopes?: string[];
+}
+
+interface TrackingOption {
+  name: string;
+  status?: 'ACTIVE' | 'ARCHIVED';
+}
+
+interface JournalLine {
+  description: string;
+  accountCode: string;
+  amount: number;
+  isCredit: boolean;
+  tracking?: {
+    name: string;
+    option: string;
+  }[];
+}
+
+interface TransactionLineItem {
+  description: string;
+  quantity: number;
+  unitAmount: number;
+  accountCode: string;
+  taxType?: string;
+  tracking?: {
+    name: string;
+    option: string;
+  }[];
+}
+
+interface Period {
+  startDate: string;
+  endDate: string;
+}
+
+interface TaxDetails {
+  amount?: number;
+  taxRate?: number;
+  reference?: string;
+}
+
+interface Transaction {
+  date: string;
+  reference: string;
+  amount: number;
+  tax: number;
+}
+
+interface TaxSummary {
+  [key: string]: {
+    totalAmount: number;
+    taxAmount: number;
+    transactions: Transaction[];
+  };
+}
+
+interface TaxReturnSubmission {
+  period: Period;
+  taxType: string;
+  summary: TaxSummary;
+  submittedAt: string;
+  reference: string;
+  journalReference: string;
+  status: string;
+}
+
+interface TaxAccountCodes {
+  VAT: string;
+  GST: string;
+  PAYG: string;
+}
+
+interface XeroTransaction {
+  date: string;
+  reference: string;
+  total: number;
+  taxAmount: number;
+  taxType: string;
+}
+
+interface XeroTaxRate {
+  taxRateID?: string;
+  name: string;
+  taxType: string;
+  reportTaxType: string;
+  status: string;
+  totalTaxAmount: number;
+  effectiveDate: string;
+}
+
+interface BankStatement {
+  date: string;
+  description: string;
+  amount: number;
+  balance: number;
+  categories?: string[];
+}
+
+interface ContactGroup {
+  groupID?: string;
+  name: string;
+  status: string;
+  contacts?: Array<{ contactID: string }>;
+}
+
+interface PayrollDetails {
+  employeeId: string;
+  payPeriod: {
+    startDate: string;
+    endDate: string;
+  };
+  leaveHours?: number;
+  payAmount?: number;
+}
+
+interface TrackingCategory {
+  name: string;
+  status: 'ACTIVE' | 'ARCHIVED';
+  options?: Array<{
+    name: string;
+    status: 'ACTIVE' | 'ARCHIVED';
+  }>;
+}
+
+// In-memory storage for tax returns (replace with database in production)
+const taxReturnStorage: TaxReturnSubmission[] = [];
+
+async function storeTaxReturn(submission: TaxReturnSubmission): Promise<void> {
+  taxReturnStorage.push(submission);
+}
+
+async function getTaxReturnByReference(reference: string): Promise<TaxReturnSubmission | undefined> {
+  return taxReturnStorage.find(sub => sub.reference === reference);
 }
 
 // Xero client instance
@@ -34,42 +168,48 @@ const server = new McpServer({
 // Tools for Bank Statement Analysis
 server.tool(
   "analyze-bank-statement",
-  "Analyze bank statements and categorize transactions",
+  "Analyze bank statement transactions",
   {
-    startDate: z.string().describe("Start date for transaction analysis (YYYY-MM-DD)"),
-    endDate: z.string().describe("End date for transaction analysis (YYYY-MM-DD)"),
-    accountId: z.string().describe("Bank account ID to analyze"),
-    categories: z.array(z.string()).optional().describe("Custom categories to use for classification")
+    startDate: z.string(),
+    endDate: z.string(),
+    accountId: z.string(),
+    categories: z.array(z.string()).optional()
   },
-  async ({ startDate, endDate, accountId, categories }) => {
+  async ({ startDate, endDate, accountId, categories }: {
+    startDate: string;
+    endDate: string;
+    accountId: string;
+    categories?: string[];
+  }) => {
     try {
-      const transactions = await xeroClient.bankFeedsApi.getStatements(accountId, undefined, 100);
-      
-      // Analyze and categorize transactions
-      const categorizedTransactions = transactions.body.statements.map(transaction => {
-        return {
-          date: transaction.date,
-          description: transaction.description,
-          amount: transaction.amount,
-          category: determineCategory(transaction, categories)  
-        };
-      });
+      const tenant = xeroClient.tenants[0];
+      const transactions = await xeroClient.accountingApi.getBankTransactions(
+        tenant.tenantId,
+        undefined,
+        `AccountID=guid("${accountId}") && Date >= DateTime("${startDate}") && Date <= DateTime("${endDate}")`,
+        "Date"
+      );
+
+      const categorizedTransactions = transactions.body.statements.map((transaction: BankStatement) => ({
+        date: transaction.date,
+        description: transaction.description,
+        amount: transaction.amount,
+        balance: transaction.balance,
+        categories: transaction.categories || []
+      }));
 
       return {
         content: [{
           type: "text",
-          text: JSON.stringify({
-            totalTransactions: transactions.length,
-            categorizedData: categorizedTransactions,
-            summary: generateTransactionSummary(categorizedTransactions)
-          }, null, 2)
+          text: JSON.stringify(categorizedTransactions, null, 2)
         }]
       };
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
       return {
         content: [{
-          type: "text", 
-          text: `Error analyzing bank statement: ${error.message}`
+          type: "text",
+          text: `Error analyzing bank statement: ${errorMessage}`
         }],
         isError: true
       };
@@ -321,6 +461,9 @@ server.tool(
       
       switch(action) {
         case "calculate-vat":
+          if (!details?.amount || !details?.taxRate) {
+            throw new Error("Amount and tax rate are required for VAT calculation");
+          }
           result = await calculateTax(details.amount, details.taxRate);
           break;
           
@@ -329,10 +472,13 @@ server.tool(
           break;
           
         case "submit-return":
-          result = await submitTaxReturn(period, taxType, details);
+          result = await submitTaxReturn(period, taxType, details || {});
           break;
           
         case "view-status":
+          if (!details?.reference) {
+            throw new Error("Reference is required to view tax return status");
+          }
           result = await getTaxReturnStatus(period, taxType, details.reference);
           break;
       }
@@ -345,10 +491,79 @@ server.tool(
       };
 
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
       return {
         content: [{
           type: "text",
-          text: `Error managing tax: ${error.message}`
+          text: `Error managing tax: ${errorMessage}`
+        }],
+        isError: true
+      };
+    }
+  }
+);
+
+// Tool for Tracking Categories
+server.tool(
+  "manage-tracking-categories",
+  "Manage tracking categories for expense and revenue tracking",
+  {
+    action: z.enum(["list", "create", "update", "delete"]),
+    name: z.string().optional().describe("Name of the tracking category"),
+    status: z.enum(["ACTIVE", "ARCHIVED"]).optional(),
+    categoryId: z.string().optional().describe("ID of the tracking category"),
+    options: z.array(
+      z.object({
+        name: z.string(),
+        status: z.enum(["ACTIVE", "ARCHIVED"]).optional()
+      })
+    ).optional().describe("Options to add to the tracking category")
+  },
+  async ({ action, name, status, categoryId, options }) => {
+    try {
+      let result;
+      const tenantId = xeroClient.tenants[0].tenantId;
+
+      switch(action) {
+        case "list":
+          result = await xeroClient.accountingApi.getTrackingCategories(tenantId);
+          break;
+
+        case "create":
+          result = await xeroClient.accountingApi.createTrackingCategory(tenantId, {
+            name,
+            status: status || "ACTIVE",
+            options: options?.map(opt => ({
+              name: opt.name,
+              status: opt.status || "ACTIVE"
+            }))
+          });
+          break;
+
+        case "update":
+          result = await xeroClient.accountingApi.updateTrackingCategory(tenantId, categoryId, {
+            name,
+            status
+          });
+          break;
+
+        case "delete":
+          result = await xeroClient.accountingApi.deleteTrackingCategory(tenantId, categoryId);
+          break;
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(result?.body || { status: "success" }, null, 2)
+        }]
+      };
+
+    } catch (error) {
+      return {
+        content: [{
+          type: "text",
+          text: `Error managing tracking categories: ${error.message}`
         }],
         isError: true
       };
@@ -404,70 +619,161 @@ async function calculateTax(amount: number, rate: number) {
   };
 }
 
-async function prepareTaxReturn(period: any, taxType: string) {
+async function prepareTaxReturn(period: Period, taxType: string): Promise<Omit<TaxReturnSubmission, 'submittedAt' | 'reference' | 'journalReference' | 'status'>> {
   const tenant = xeroClient.tenants[0];
   
-  // Get all relevant transactions for the period
-  const transactions = await xeroClient.accountingApi.getBankTransactions(
-    tenant.tenantId,
-    undefined,
-    `Date >= DateTime(${period.startDate}) && Date <= DateTime(${period.endDate})`,
-    "Date"
-  );
+  try {
+    // Get all relevant transactions for the period
+    const transactions = await xeroClient.accountingApi.getBankTransactions(
+      tenant.tenantId,
+      undefined,
+      `Date >= DateTime(${period.startDate}) && Date <= DateTime(${period.endDate})`,
+      "Date"
+    );
 
-  // Calculate tax totals
-  const taxableTransactions = transactions.body.bankTransactions.filter(t => t.taxType);
-  const taxTotals = taxableTransactions.reduce((acc, curr) => {
-    if (!acc[curr.taxType]) {
-      acc[curr.taxType] = {
-        totalAmount: 0,
-        taxAmount: 0,
-        transactions: []
-      };
-    }
-    acc[curr.taxType].totalAmount += curr.total;
-    acc[curr.taxType].taxAmount += curr.taxAmount;
-    acc[curr.taxType].transactions.push({
-      date: curr.date,
-      reference: curr.reference,
-      amount: curr.total,
-      tax: curr.taxAmount
-    });
-    return acc;
-  }, {});
+    // Calculate tax totals with proper types
+    const taxableTransactions = transactions.body.bankTransactions
+      .filter((t: XeroTransaction) => t.taxType === taxType);
 
-  return {
-    period,
-    taxType,
-    summary: taxTotals
-  };
+    const taxTotals = taxableTransactions.reduce<TaxSummary>((acc: TaxSummary, curr: XeroTransaction) => {
+      if (!acc[curr.taxType]) {
+        acc[curr.taxType] = {
+          totalAmount: 0,
+          taxAmount: 0,
+          transactions: []
+        };
+      }
+      acc[curr.taxType].totalAmount += curr.total;
+      acc[curr.taxType].taxAmount += curr.taxAmount;
+      acc[curr.taxType].transactions.push({
+        date: curr.date,
+        reference: curr.reference,
+        amount: curr.total,
+        tax: curr.taxAmount
+      });
+      return acc;
+    }, {});
+
+    return {
+      period,
+      taxType,
+      summary: taxTotals
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+    throw new Error(`Failed to prepare tax return: ${errorMessage}`);
+  }
 }
 
-async function submitTaxReturn(period: any, taxType: string, details: any) {
-  // Prepare return data
-  const returnData = await prepareTaxReturn(period, taxType);
+async function submitTaxReturn(period: Period, taxType: string, details: TaxDetails): Promise<TaxReturnSubmission> {
+  const tenant = xeroClient.tenants[0];
   
-  // Store submission details
-  const submission = {
-    ...returnData,
-    submittedAt: new Date().toISOString(),
-    reference: details.reference,
-    status: "Submitted"
-  };
+  try {
+    // Prepare return data
+    const returnData = await prepareTaxReturn(period, taxType);
+    
+    // Create tax return line items from the calculated totals
+    const lineItems = Object.entries(returnData.summary).map(([type, data]) => ({
+      taxType: type,
+      totalAmount: data.totalAmount,
+      taxAmount: data.taxAmount
+    }));
 
-  // In a real implementation, this would integrate with the relevant tax authority's API
-  return submission;
+    // Create tax assessment/return using Xero Accounting API
+    const taxReturn = await xeroClient.accountingApi.createTaxRates(tenant.tenantId, {
+      taxRates: [{
+        name: `${taxType} Return ${period.startDate} to ${period.endDate}`,
+        taxType: taxType,
+        reportTaxType: taxType,
+        status: "ACTIVE",
+        totalTaxAmount: lineItems.reduce((sum, item) => sum + item.taxAmount, 0),
+        effectiveDate: period.startDate
+      }]
+    });
+
+    // Create associated manual journal entry for the tax return
+    const manualJournal = await xeroClient.accountingApi.createManualJournals(tenant.tenantId, {
+      manualJournals: [{
+        date: new Date().toISOString(),
+        status: "POSTED",
+        narration: `${taxType} Tax Return for period ${period.startDate} to ${period.endDate}`,
+        journalLines: lineItems.map(item => ({
+          lineAmount: item.taxAmount,
+          accountCode: getTaxAccountCode(taxType),
+          taxType: item.taxType,
+          tracking: []
+        }))
+      }]
+    });
+
+    // Store submission details with proper references
+    const submission: TaxReturnSubmission = {
+      ...returnData,
+      submittedAt: new Date().toISOString(),
+      reference: taxReturn.body.taxRates[0].taxRateID,
+      journalReference: manualJournal.body.manualJournals[0].manualJournalID,
+      status: "Submitted"
+    };
+
+    // Store the submission details for status tracking
+    await storeTaxReturn(submission);
+
+    return submission;
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Failed to submit tax return: ${error.message}`);
+    }
+    throw new Error('Failed to submit tax return: An unknown error occurred');
+  }
 }
 
-async function getTaxReturnStatus(period: any, taxType: string, reference: string) {
-  // In a real implementation, this would check the status with the tax authority
-  return {
-    reference,
-    period,
-    taxType,
-    status: "Processed", // This would be dynamic in real implementation
-    lastUpdated: new Date().toISOString()
+// Helper function to get the appropriate account code for tax entries
+function getTaxAccountCode(taxType: string): string {
+  const accountCodes: TaxAccountCodes = {
+    "VAT": "420", // Example VAT liability account
+    "GST": "425", // Example GST liability account
+    "PAYG": "430", // Example PAYG withholding account
   };
+  
+  return accountCodes[taxType as keyof TaxAccountCodes] || "420"; // Default to VAT account if type not found
+}
+
+async function getTaxReturnStatus(period: Period, taxType: string, reference: string): Promise<any> {
+  try {
+    // First check our local storage
+    const storedReturn = await getTaxReturnByReference(reference);
+    if (!storedReturn) {
+      throw new Error(`Tax return with reference ${reference} not found`);
+    }
+
+    const tenant = xeroClient.tenants[0];
+    
+    // Check the manual journal status
+    const journal = await xeroClient.accountingApi.getManualJournal(
+      tenant.tenantId,
+      storedReturn.journalReference
+    );
+
+    // Check the tax rate status
+    const taxRate = await xeroClient.accountingApi.getTaxRate(
+      tenant.tenantId,
+      storedReturn.reference
+    );
+
+    return {
+      reference,
+      period,
+      taxType,
+      status: journal.body.manualJournals[0].status,
+      taxRateStatus: taxRate.body.taxRates[0].status,
+      lastUpdated: new Date().toISOString()
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Failed to get tax return status: ${error.message}`);
+    }
+    throw new Error('Failed to get tax return status: An unknown error occurred');
+  }
 }
 
 // Initialize Xero client with OAuth2 credentials
@@ -491,22 +797,23 @@ async function initializeXeroClient(config: XeroConfig) {
 }
 
 // Main function to run the server
-async function main() {
+async function main(): Promise<void> {
   try {
-    const config = {
-      clientId: process.env.XERO_CLIENT_ID,
-      clientSecret: process.env.XERO_CLIENT_SECRET,
-      grantType: 'client_credentials'
+    const config: XeroConfig = {
+      clientId: process.env.XERO_CLIENT_ID || '',
+      clientSecret: process.env.XERO_CLIENT_SECRET || '',
+      grantType: "client_credentials",
+      scopes: ['accounting.transactions', 'payroll.employees', 'bankfeeds.read']
     };
 
+    if (!config.clientId || !config.clientSecret) {
+      throw new Error('Xero client credentials are required');
+    }
+
     await initializeXeroClient(config);
-    
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-    
     console.error("Xero MCP Server running on stdio");
   } catch (error) {
-    console.error("Fatal error in main():", error);
+    console.error("Fatal error in main():", error instanceof Error ? error.message : 'Unknown error');
     process.exit(1);
   }
 }

@@ -17,6 +17,9 @@
     },
     "xero-stock": {
       "url": "https://gitmcp.io/xeroapi/xero-mcp-server"
-    }	
+    },
+    "huggingface-spaces": {
+      "url": "https://gitmcp.io/evalstate/mcp-hfspace"
+    },
   }
 }
