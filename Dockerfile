@@ -1,6 +1,6 @@
 # Multi-stage build for all MCP servers
 # Base stage with common dependencies
-FROM node:18-slim AS base
+FROM node:22-slim AS base
 WORKDIR /app
 RUN apt-get update && apt-get install -y chromium \
     && rm -rf /var/lib/apt/lists/*
