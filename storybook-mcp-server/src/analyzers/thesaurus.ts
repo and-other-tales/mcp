@@ -121,6 +121,58 @@ export class ContextualThesaurus {
     return synonymMap[term.toLowerCase()] || [];
   }
 
+  private calculateContextScore(
+    word: string,
+    termContext: SynonymContext,
+    narrativeContext: NarrativeContext
+  ): number {
+    let score = 1.0;
+
+    // Adjust score based on formality match
+    if (termContext.formality === 'formal' && this.toneCategories.formal.has(word)) {
+      score *= 1.2;
+    } else if (termContext.formality === 'informal' && this.toneCategories.casual.has(word)) {
+      score *= 1.2;
+    }
+
+    // Adjust for emotional intensity
+    if (termContext.intensity > 0.7 && this.toneCategories.emotional.has(word)) {
+      score *= 1.3;
+    }
+
+    // Adjust for emotional tone match
+    if (narrativeContext.dominantEmotion && 
+        this.emotionKeywords[narrativeContext.dominantEmotion].includes(word)) {
+      score *= 1.2;
+    }
+
+    return score;
+  }
+
+  private generateUsageNotes(
+    word: string,
+    termContext: SynonymContext,
+    narrativeContext: NarrativeContext
+  ): string {
+    const notes: string[] = [];
+
+    if (this.toneCategories.formal.has(word)) {
+      notes.push('More formal register');
+    }
+    if (this.toneCategories.casual.has(word)) {
+      notes.push('More casual register');
+    }
+    if (this.toneCategories.emotional.has(word)) {
+      notes.push('Implies stronger emotion');
+    }
+    if (narrativeContext.dominantEmotion &&
+        this.emotionKeywords[narrativeContext.dominantEmotion].includes(word)) {
+      notes.push('Matches emotional tone of scene');
+    }
+
+    return notes.join('. ');
+  }
+
   /**
    * Ranks synonyms based on contextual appropriateness
    */
@@ -131,6 +183,8 @@ export class ContextualThesaurus {
   ): ThesaurusSuggestion[] {
     return synonyms.map(word => ({
       word,
+      contextScore: this.calculateContextScore(word, termContext, narrativeContext),
+      usageNotes: this.generateUsageNotes(word, termContext, narrativeContext),
       synonyms: this.getBaseSynonyms(word),
       context: {
         tone: termContext.tone,
@@ -144,7 +198,8 @@ export class ContextualThesaurus {
         style: narrativeContext.style,
         dominantEmotion: narrativeContext.dominantEmotion
       }
-    }));
+    }))
+    .sort((a, b) => b.contextScore - a.contextScore);
   }
 
   /**

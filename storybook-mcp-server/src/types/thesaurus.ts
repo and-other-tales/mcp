@@ -2,9 +2,11 @@ export type EmotionTone = 'positive' | 'negative' | 'neutral';
 
 export interface ThesaurusSuggestion {
     word: string;
-    synonyms: string[];
-    context: SynonymContext;
-    narrativeContext: NarrativeContext;
+    contextScore: number;
+    usageNotes: string;
+    synonyms?: string[];
+    context?: SynonymContext;
+    narrativeContext?: NarrativeContext;
 }
 
 export interface SynonymContext {
@@ -20,3 +22,6 @@ export interface NarrativeContext {
     style?: string;
     dominantEmotion?: EmotionTone;
 }
+
+// Re-export all types for better modules compatibility
+export type { EmotionTone as default, ThesaurusSuggestion, SynonymContext, NarrativeContext };

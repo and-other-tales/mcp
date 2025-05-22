@@ -23,6 +23,49 @@ export class DynamicPromptManager {
     this.initializeDefaultTemplates();
   }
 
+  public addGlobalConstraint(constraint: PromptConstraint): void {
+    if (!this.activeConstraints.some(c => c.rule === constraint.rule)) {
+      this.activeConstraints.push(constraint);
+    }
+  }
+
+  public updateContextHistory(focusId: string, context: PromptContext): void {
+    const existing = this.contextHistory.get(focusId) || [];
+    existing.push(context);
+    this.contextHistory.set(focusId, existing);
+  }
+
+  public integrateChunkAnalysis(analysis: ChunkAnalysis): ContextWindow {
+    const contextualElements: ContextualElement[] = analysis.contextualElements.map(element => ({
+      id: uuidv4(),
+      type: element.type,
+      content: element.name,
+      importance: element.significance,
+      relationToFocus: this.determineRelation(element)
+    }));
+
+    const midpoint = Math.floor(contextualElements.length / 2);
+    
+    return {
+      before: contextualElements.slice(0, midpoint),
+      after: contextualElements.slice(midpoint + 1),
+      currentFocus: {
+        type: 'scene', // Default to scene, can be determined by metadata
+        id: analysis.chunk.id,
+        content: analysis.chunk.content,
+        criticalElements: analysis.metadata.significantElements.events
+      }
+    };
+  }
+
+  private determineRelation(element: any): 'setup' | 'callback' | 'development' | 'resolution' {
+    // This would use more sophisticated logic in a full implementation
+    if (element.firstMention === element.lastMention) {
+      return 'development';
+    }
+    return element.firstMention ? 'callback' : 'setup';
+  }
+
   private initializeDefaultTemplates() {
     // Default editing template
     this.templates.set('edit', {

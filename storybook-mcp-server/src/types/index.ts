@@ -1,12 +1,12 @@
 import { Scene } from './scene';
 import { EmotionalScore } from './emotional';
 import { NlpDocument } from './nlp';
-import type { ThesaurusSuggestion, SynonymContext, NarrativeContext } from './thesaurus';
+import { ThesaurusSuggestion, SynonymContext, NarrativeContext, EmotionTone } from './thesaurus';
 
 export { Scene } from './scene';
 export { EmotionalScore } from './emotional';
 export { NlpDocument } from './nlp';
-export { ThesaurusSuggestion, SynonymContext, NarrativeContext } from './thesaurus';
+export type { ThesaurusSuggestion, SynonymContext, NarrativeContext, EmotionTone } from './thesaurus';
 
 export interface EmotionalAnalysisResult {
     scenes: Scene[];
