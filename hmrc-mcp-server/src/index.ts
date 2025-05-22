@@ -893,3 +893,53 @@ server.tool(
     }
   }
 );
+
+// Health check endpoint
+server.tool(
+  "health",
+  "Get server health status",
+  {},
+  async () => {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            status: "ok",
+            version: "1.0.0",
+            timestamp: new Date().toISOString()
+          }, null, 2)
+        }
+      ]
+    };
+  }
+);
+
+// Main function to run the server
+async function main() {
+  console.log("Starting HMRC MCP Server...");
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  
+  // Log successful startup
+  console.log('HMRC MCP Server started successfully', {
+    version: "1.0.0",
+    timestamp: new Date().toISOString()
+  });
+}
+
+// Start the server
+main().catch(error => {
+  console.error('Server startup failed:', { error });
+  process.exit(1);
+});
+
+// Handle process termination
+process.on("SIGINT", async () => {
+  console.error("Shutting down...");
+  process.exit(0);
+});
+
+process.stdin.on("close", async () => {
+  console.error("HMRC MCP Server closed");
+});

@@ -1266,6 +1266,27 @@ server.tool(
   }
 );
 
+// Health check endpoint
+server.tool(
+  "health",
+  "Get server health status",
+  {},
+  async () => {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            status: "ok",
+            version: "1.0.0",
+            timestamp: new Date().toISOString()
+          }, null, 2)
+        }
+      ]
+    };
+  }
+);
+
 // Main function to run the server
 async function main() {
   const transport = new StdioServerTransport();

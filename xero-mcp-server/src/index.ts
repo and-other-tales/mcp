@@ -735,6 +735,25 @@ async function initializeXeroClient(config: XeroConfig) {
   return xeroClient;
 }
 
+// Health check endpoint
+server.registerTool({
+  name: "health",
+  description: "Get server health status",
+  schema: {},
+  handler: async () => {
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          status: "ok",
+          version: "1.0.0",
+          timestamp: new Date().toISOString()
+        }, null, 2)
+      }]
+    };
+  }
+});
+
 // Main function to run the server
 async function main(): Promise<void> {
   try {
@@ -750,6 +769,11 @@ async function main(): Promise<void> {
     }
 
     await initializeXeroClient(config);
+    
+    // Connect server to StdioServerTransport
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    
     console.error("Xero MCP Server running on stdio");
   } catch (error) {
     console.error("Fatal error in main():", error instanceof Error ? error.message : 'Unknown error');

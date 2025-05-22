@@ -289,13 +289,25 @@ server.setRequestHandler("read_resource", async (request: ServerRequest) => {
 });
 
 // Health check endpoint
-const healthCheck = (): { status: string; version: string; timestamp: string } => {
-  return {
-    status: "ok",
-    version: "1.0.0",
-    timestamp: new Date().toISOString()
-  };
-};
+server.tool(
+  "health",
+  "Get server health status",
+  {},
+  async () => {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            status: "ok",
+            version: "1.0.0",
+            timestamp: new Date().toISOString()
+          }, null, 2)
+        }
+      ]
+    };
+  }
+);
 
 // Main function to run the server
 async function main() {

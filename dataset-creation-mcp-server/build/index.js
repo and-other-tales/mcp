@@ -2,9 +2,9 @@
 // Define types for modules that can't be found at compile time
 // These will be resolved at runtime when the modules are available
 // @ts-ignore
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/sdk/dist/server/index.js";
 // @ts-ignore
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/dist/server/stdio.js";
 // @ts-ignore
 import axios from "axios";
 import puppeteer from "puppeteer";
