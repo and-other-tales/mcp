@@ -31,6 +31,14 @@ RUN npm ci
 COPY dataset-creation-mcp-server/ .
 RUN npm run build
 
+# Build stage for Storybook server
+FROM base AS storybook-build
+WORKDIR /app/storybook-mcp-server
+COPY storybook-mcp-server/package*.json ./
+RUN npm ci
+COPY storybook-mcp-server/ .
+RUN npm run build
+
 # Final stage for UK Legislation server
 FROM base AS uk-legislation
 WORKDIR /app/server
@@ -62,4 +70,15 @@ RUN npm ci --only=production
 EXPOSE 8082
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8082/health || exit 1
+CMD ["node", "build/index.js"]
+
+# Final stage for Storybook server
+FROM base AS storybook
+WORKDIR /app/server
+COPY --from=storybook-build /app/storybook-mcp-server/build ./build
+COPY --from=storybook-build /app/storybook-mcp-server/package*.json ./
+RUN npm ci --only=production
+EXPOSE 8083
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8083/health || exit 1
 CMD ["node", "build/index.js"]

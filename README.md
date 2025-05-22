@@ -1,10 +1,10 @@
 # Model Context Protocol (MCP) Servers
 
-A collection of three complementary MCP servers that provide access to UK legislation, tax documentation, and dataset creation capabilities.
+A collection of complementary MCP servers that provide access to UK legislation, tax documentation, dataset creation capabilities, and story analysis tools.
 
 ## Overview
 
-This repository contains three MCP servers:
+This repository contains four MCP servers:
 
 1. **UK Legislation MCP Server**
    - Access and analyze UK legislation
@@ -27,17 +27,27 @@ This repository contains three MCP servers:
    - Upload to HuggingFace Hub
    - HTML to Markdown conversion
 
+4. **Storybook MCP Server**
+   - Analyze story manuscripts and narratives
+   - Emotional content analysis
+   - Character and dialogue analysis
+   - Scene breakdown and analysis
+   - Sequential story thinking tools
+   - Reader engagement analysis
+   - Repetition detection
+   - Writing style suggestions
+
 ## Architecture
 
 The servers are designed to work independently or together, each running in its own container:
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  UK Legislation │    │      HMRC       │    │Dataset Creation │
-│  MCP Server     │    │   MCP Server    │    │   MCP Server    │
-├─────────────────┤    ├─────────────────┤    ├─────────────────┤
-│ Port: 8080      │    │ Port: 8081      │    │ Port: 8082      │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│  UK Legislation │    │      HMRC       │    │Dataset Creation │    │   Storybook    │
+│  MCP Server     │    │   MCP Server    │    │   MCP Server    │    │   MCP Server   │
+├─────────────────┤    ├─────────────────┤    ├─────────────────┤    ├─────────────────┤
+│ Port: 8080      │    │ Port: 8081      │    │ Port: 8082      │    │ Port: 8083      │
+└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
 ## Prerequisites

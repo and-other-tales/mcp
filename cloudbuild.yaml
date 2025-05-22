@@ -30,6 +30,16 @@ steps:
       '.'
     ]
 
+  # Build Storybook server
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '--target', 'storybook',
+      '-t', 'gcr.io/$PROJECT_ID/storybook-mcp:$COMMIT_SHA',
+      '-t', 'gcr.io/$PROJECT_ID/storybook-mcp:latest',
+      '.'
+    ]
+
   # Push UK Legislation server
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/uk-legislation-mcp:$COMMIT_SHA']
@@ -47,6 +57,12 @@ steps:
     args: ['push', 'gcr.io/$PROJECT_ID/dataset-creation-mcp:$COMMIT_SHA']
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/dataset-creation-mcp:latest']
+
+  # Push Storybook server
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/storybook-mcp:$COMMIT_SHA']
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/storybook-mcp:latest']
 
   # Deploy UK Legislation server to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -93,6 +109,21 @@ steps:
       '--set-env-vars', 'NODE_ENV=production,HF_TOKEN=${_HF_TOKEN}'
     ]
 
+  # Deploy Storybook server to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'storybook-mcp'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/storybook-mcp:$COMMIT_SHA'
+      - '--region'
+      - '${_REGION}'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+
 timeout: 1800s
 
 substitutions:
@@ -105,3 +136,5 @@ images:
   - 'gcr.io/$PROJECT_ID/hmrc-mcp:latest'
   - 'gcr.io/$PROJECT_ID/dataset-creation-mcp:$COMMIT_SHA'
   - 'gcr.io/$PROJECT_ID/dataset-creation-mcp:latest'
+  - 'gcr.io/$PROJECT_ID/storybook-mcp:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/storybook-mcp:latest'

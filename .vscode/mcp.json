@@ -21,5 +21,14 @@
     "huggingface-spaces": {
       "url": "https://gitmcp.io/evalstate/mcp-hfspace"
     },
+    "langchain": {
+      "url": "https://gitmcp.io/langchain-ai/langchain"
+    },
+    "langgraph": {
+      "url": "https://gitmcp.io/langchain-ai/langgraph"
+    },
+    "git docs"  : {
+      "url": "https://gitmcp.io/docs"
+    }
   }
 }
