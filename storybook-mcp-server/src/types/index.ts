@@ -18,15 +18,15 @@ export interface EmotionalAnalysisResult {
         overallTrend: string;
     };
     pacingSuggestions: string[];
-    emotionalHighPoints: EmotionalHighPoint[];
 }
 
 export interface EmotionalHighPoint {
-    paragraph: number;
-    emotion: keyof EmotionalScore;
+    scene: Scene;
+    emotions: EmotionalScore;
     intensity: number;
-    context: string;
-}// Extend McpServer to include setRequestHandler
+}
+
+// Extend McpServer to include setRequestHandler
 declare module "@modelcontextprotocol/sdk/server/mcp.js" {
     interface McpServer {
         setRequestHandler(name: string, handler: (request: any) => Promise<any>): void;

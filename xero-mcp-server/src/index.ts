@@ -4,11 +4,14 @@
  * and financial data APIs through natural language interactions.
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
+import {
+  McpServer,
+  McpServerOptions,
+  StdioServerTransport
+} from '@modelcontextprotocol/sdk/server/index.js';
+import * as z from 'zod';
 import { XeroClient } from 'xero-node';
-import { BankTransaction, Contact, ManualJournal, TrackingCategory } from 'xero-node';
+import { Contact, Contacts, Invoice, Invoices } from 'xero-node';
 
 // Define custom interfaces
 interface XeroConfig {
@@ -156,7 +159,8 @@ async function getTaxReturnByReference(reference: string): Promise<TaxReturnSubm
 let xeroClient: XeroClient;
 
 // Create server instance 
-const server = new McpServer({
+const server = new McpServer();
+server.configure({
   name: "xero-mcp",
   version: "1.0.0",
   capabilities: {
@@ -166,16 +170,16 @@ const server = new McpServer({
 });
 
 // Tools for Bank Statement Analysis
-server.tool(
-  "analyze-bank-statement",
-  "Analyze bank statement transactions",
-  {
+server.registerTool({
+  name: "analyze-bank-statement",
+  description: "Analyze bank statement transactions",
+  schema: {
     startDate: z.string(),
     endDate: z.string(),
     accountId: z.string(),
     categories: z.array(z.string()).optional()
   },
-  async ({ startDate, endDate, accountId, categories }: {
+  handler: async ({ startDate, endDate, accountId, categories }: {
     startDate: string;
     endDate: string;
     accountId: string;
@@ -215,20 +219,20 @@ server.tool(
       };
     }
   }
-);
+});
 
 // Contact groups tool
-server.tool(
-  "manage-contact-groups",
-  "Manage contact groups",
-  {
+server.registerTool({
+  name: "manage-contact-groups",
+  description: "Manage contact groups",
+  schema: {
     action: z.enum(["create", "update", "delete", "view"]),
     groupName: z.string().optional(),
     groupId: z.string().optional(),
     contacts: z.array(z.string()).optional(),
     status: z.enum(["ACTIVE", "ARCHIVED"]).optional()
   },
-  async ({ action, groupName, groupId, contacts, status }: {
+  handler: async ({ action, groupName, groupId, contacts, status }: {
     action: "create" | "update" | "delete" | "view";
     groupName?: string;
     groupId?: string;
@@ -283,19 +287,19 @@ server.tool(
       };
     }
   }
-);
+});
 
 // Reports tool
-server.tool(
-  "generate-report",
-  "Generate financial reports",
-  {
+server.registerTool({
+  name: "generate-report",
+  description: "Generate financial reports",
+  schema: {
     reportType: z.enum(["profit-loss", "balance-sheet", "cashflow", "trial-balance"]),
     fromDate: z.string(),
     toDate: z.string(),
     trackingCategories: z.array(z.string()).optional()
   },
-  async ({ reportType, fromDate, toDate, trackingCategories }: {
+  handler: async ({ reportType, fromDate, toDate, trackingCategories }: {
     reportType: "profit-loss" | "balance-sheet" | "cashflow" | "trial-balance";
     fromDate: string;
     toDate: string;
@@ -341,13 +345,13 @@ server.tool(
       };
     }
   }
-);
+});
 
 // Payroll tool
-server.tool(
-  "manage-payroll",
-  "Manage employee payroll",
-  {
+server.registerTool({
+  name: "manage-payroll",
+  description: "Manage employee payroll",
+  schema: {
     action: z.enum(["process-pay", "request-leave", "view-payslips"]),
     employeeId: z.string(),
     payPeriod: z.object({
@@ -359,7 +363,7 @@ server.tool(
       leaveHours: z.number().optional()
     }).optional()
   },
-  async ({ action, employeeId, payPeriod, details }: {
+  handler: async ({ action, employeeId, payPeriod, details }: {
     action: "process-pay" | "request-leave" | "view-payslips";
     employeeId: string;
     payPeriod?: {
@@ -428,13 +432,13 @@ server.tool(
       };
     }
   }
-);
+});
 
 // Tracking categories tool
-server.tool(
-  "manage-tracking",
-  "Manage tracking categories",
-  {
+server.registerTool({
+  name: "manage-tracking",
+  description: "Manage tracking categories",
+  schema: {
     action: z.enum(["create", "update", "delete", "view"]),
     name: z.string().optional(),
     status: z.enum(["ACTIVE", "ARCHIVED"]).optional(),
@@ -444,7 +448,7 @@ server.tool(
       status: z.enum(["ACTIVE", "ARCHIVED"])
     })).optional()
   },
-  async ({ action, name, status, categoryId, options }: {
+  handler: async ({ action, name, status, categoryId, options }: {
     action: "create" | "update" | "delete" | "view";
     name?: string;
     status?: "ACTIVE" | "ARCHIVED";
@@ -504,7 +508,7 @@ server.tool(
       };
     }
   }
-);
+});
 
 // Helper Functions
 function determineCategory(transaction: any, customCategories?: string[]) {
@@ -560,10 +564,6 @@ async function prepareTaxReturn(period: Period, taxType: string): Promise<Omit<T
   try {
     // Get all relevant transactions for the period
     const transactions = await xeroClient.accountingApi.getBankTransactions(
-      tenant.tenantId,
-      undefined,
-      `Date >= DateTime(${period.startDate}) && Date <= DateTime(${period.endDate})`,
-      "Date"
     );
 
     // Calculate tax totals with proper types
