@@ -3,11 +3,16 @@
 // Define types for modules that can't be found at compile time
 // These will be resolved at runtime when the modules are available
 // @ts-ignore
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Server as McpServer } from "@modelcontextprotocol/sdk/server/index.js";
 // @ts-ignore
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 // @ts-ignore
-import { z } from "zod";
+import { 
+  ListToolsRequestSchema, 
+  CallToolRequestSchema, 
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema 
+} from "@modelcontextprotocol/sdk/types.js";
 // @ts-ignore
 import axios, { AxiosError } from "axios";
 import puppeteer, { Browser, Page } from "puppeteer";
@@ -73,12 +78,12 @@ async function makeApiRequest<T>(url: string, useCache: boolean = true): Promise
     if (useCache) {
       const cachedData = getCachedResponse(url);
       if (cachedData) {
-        console.log(`Cache hit for URL: ${url}`);
+        console.error(`Cache hit for URL: ${url}`);
         return cachedData as T;
       }
     }
     
-    console.log(`Making API request to: ${url}`);
+    console.error(`Making API request to: ${url}`);
     const response = await axios.get(url, {
       headers: {
         "User-Agent": USER_AGENT,
@@ -173,38 +178,45 @@ async function convertHtmlToMarkdown(html: string): Promise<string> {
     // First clean the HTML
     const cleanedHtml = cleanHtml(html);
     
-    try {
-      // Try using ReaderLM-v2 model for conversion
-      console.log("Converting HTML to Markdown using ReaderLM-v2...");
-      const prompt = `Extract the main content from the given HTML and convert it to Markdown format.\n\`\`\`html\n${cleanedHtml}\n\`\`\``;
-      
-      const response = await hf.textGeneration({
-        model: "jinaai/ReaderLM-v2",
-        inputs: prompt,
-        parameters: {
-          max_new_tokens: 4096,
-          temperature: 0.1,
-          repetition_penalty: 1.05
+    // Only try HF inference if token is provided
+    if (HF_TOKEN) {
+      try {
+        // Try using ReaderLM-v2 model for conversion
+        console.error("Converting HTML to Markdown using ReaderLM-v2...");
+        const prompt = `Extract the main content from the given HTML and convert it to Markdown format.\n\`\`\`html\n${cleanedHtml}\n\`\`\``;
+        
+        const response = await hf.textGeneration({
+          model: "jinaai/ReaderLM-v2",
+          inputs: prompt,
+          parameters: {
+            max_new_tokens: 4096,
+            temperature: 0.1,
+            repetition_penalty: 1.05
+          }
+        });
+        
+        // Extract markdown content from the response
+        const markdown = response.generated_text.trim();
+        
+        // Extract content between markdown code blocks if present
+        const markdownRegex = /```(?:markdown)?\s*([\s\S]*?)```/;
+        const match = markdown.match(markdownRegex);
+        
+        if (match && match[1]) {
+          return match[1].trim();
         }
-      });
-      
-      // Extract markdown content from the response
-      const markdown = response.generated_text.trim();
-      
-      // Extract content between markdown code blocks if present
-      const markdownRegex = /```(?:markdown)?\s*([\s\S]*?)```/;
-      const match = markdown.match(markdownRegex);
-      
-      if (match && match[1]) {
-        return match[1].trim();
+        
+        return markdown;
+      } catch (error) {
+        // Fallback to turndown if HF inference fails
+        console.error("HF inference failed, falling back to TurndownService:", error);
       }
-      
-      return markdown;
-    } catch (error) {
-      // Fallback to turndown if HF inference fails
-      console.warn("HF inference failed, falling back to TurndownService:", error);
-      return turndownService.turndown(cleanedHtml);
+    } else {
+      console.error("No HF_TOKEN provided, using TurndownService directly");
     }
+    
+    // Use TurndownService as fallback
+    return turndownService.turndown(cleanedHtml);
   } catch (error) {
     console.error("Error converting HTML to Markdown:", error);
     // Last resort fallback
@@ -247,7 +259,7 @@ function writeDatasetToDisk(dataset: DatasetFormat, outputPath: string): void {
   }
   
   writeFileSync(outputPath, JSON.stringify(dataset, null, 2));
-  console.log(`Dataset written to ${outputPath}`);
+  console.error(`Dataset written to ${outputPath}`);
 }
 
 // Function to create a dataset suitable for HF
@@ -277,7 +289,7 @@ async function uploadDatasetToHub(
     
     // @ts-ignore - whoAmI accepts { token } in the latest version
     const user = await whoAmI({ token: HF_TOKEN });
-    console.log(`Uploading dataset as user: ${user.name}`);
+    console.error(`Uploading dataset as user: ${user.name}`);
     
     // Prepare upload
     const fileName = localPath.split("/").pop() || "dataset.json";
@@ -402,22 +414,14 @@ const TOOLS = [
 ];
 
 // Create server
-const server = new McpServer(
-  {
-    name: "dataset-creation-mcp-server",
-    version: "1.0.0",
-  },
-  {
-    capabilities: {
-      resources: {},
-      tools: {},
-    },
-  }
-);
+const server = new McpServer({
+  name: "dataset-creation-mcp-server",
+  version: "1.0.0",
+});
 
 // Handle tool calls
 async function handleToolCall(name: string, args: any) {
-  console.log(`Handling tool call: ${name}`);
+  console.error(`Handling tool call: ${name}`);
   
   switch (name) {
     case "crawl_website": {
@@ -433,7 +437,7 @@ async function handleToolCall(name: string, args: any) {
       } = args;
       
       try {
-        console.log(`Crawling website: ${url} (depth: ${depth}, maxPages: ${maxPages})`);
+        console.error(`Crawling website: ${url} (depth: ${depth}, maxPages: ${maxPages})`);
         
         const page = await ensureBrowser();
         const visitedUrls = new Set<string>();
@@ -479,7 +483,7 @@ async function handleToolCall(name: string, args: any) {
           if (visitedUrls.size >= maxPages) return;
           if (visitedUrls.has(currentUrl)) return;
           
-          console.log(`Processing URL: ${currentUrl} (depth: ${currentDepth})`);
+          console.error(`Processing URL: ${currentUrl} (depth: ${currentDepth})`);
           visitedUrls.add(currentUrl);
           
           try {
@@ -580,14 +584,14 @@ async function handleToolCall(name: string, args: any) {
       } = args;
       
       try {
-        console.log(`Creating dataset from ${urls.length} URLs`);
+        console.error(`Creating dataset from ${urls.length} URLs`);
         
         const page = await ensureBrowser();
         const documents: DatasetDocument[] = [];
         
         // Function to process a URL
         const processUrl = async (url: string): Promise<void> => {
-          console.log(`Processing URL: ${url}`);
+          console.error(`Processing URL: ${url}`);
           
           try {
             // Visit the page
@@ -678,7 +682,7 @@ async function handleToolCall(name: string, args: any) {
         if (year) searchUrl += `&year=${year}`;
         if (type) searchUrl += `&type=${type}`;
         
-        console.log(`Searching legislation: ${searchUrl}`);
+        console.error(`Searching legislation: ${searchUrl}`);
         
         // Fetch search results
         const searchResponse = await makeApiRequest<any>(searchUrl);
@@ -696,7 +700,7 @@ async function handleToolCall(name: string, args: any) {
         }
         
         const results = searchResponse.results.slice(0, maxItems);
-        console.log(`Found ${results.length} legislation items`);
+        console.error(`Found ${results.length} legislation items`);
         
         // Process each legislation
         const documents: DatasetDocument[] = [];
@@ -705,7 +709,7 @@ async function handleToolCall(name: string, args: any) {
         const processLegislation = async (item: any): Promise<void> => {
           try {
             const url = item.url;
-            console.log(`Processing legislation: ${url}`);
+            console.error(`Processing legislation: ${url}`);
             
             // Fetch legislation content
             const page = await ensureBrowser();
@@ -799,7 +803,7 @@ async function handleToolCall(name: string, args: any) {
           searchUrl += `&filter_content_purpose=${documentType}`;
         }
         
-        console.log(`Searching HMRC documents: ${searchUrl}`);
+        console.error(`Searching HMRC documents: ${searchUrl}`);
         
         // Fetch search results
         const searchResponse = await makeApiRequest<any>(searchUrl);
@@ -817,7 +821,7 @@ async function handleToolCall(name: string, args: any) {
         }
         
         const results = searchResponse.results.slice(0, maxItems);
-        console.log(`Found ${results.length} HMRC documents`);
+        console.error(`Found ${results.length} HMRC documents`);
         
         // Process each document
         const documents: DatasetDocument[] = [];
@@ -826,7 +830,7 @@ async function handleToolCall(name: string, args: any) {
         const processDocument = async (item: any): Promise<void> => {
           try {
             const url = `https://www.gov.uk${item.link}`;
-            console.log(`Processing document: ${url}`);
+            console.error(`Processing document: ${url}`);
             
             // Fetch document content
             const page = await ensureBrowser();
@@ -945,46 +949,26 @@ async function handleToolCall(name: string, args: any) {
 }
 
 // Setup request handlers
-server.setRequestHandler("list_resources", async () => ({
+server.setRequestHandler(ListResourcesRequestSchema, async () => ({
   resources: [],
 }));
 
-server.setRequestHandler("read_resource", async (request) => {
+server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   throw new Error(`Resource not found: ${request.params.uri}`);
 });
 
-server.setRequestHandler("list_tools", async () => ({
+server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: TOOLS,
 }));
 
-server.setRequestHandler("call_tool", async (request) => 
+server.setRequestHandler(CallToolRequestSchema, async (request) => 
   handleToolCall(request.params.name, request.params.arguments ?? {})
 );
 
-// Health check endpoint
-server.tool(
-  "health",
-  "Get server health status",
-  {},
-  async () => {
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({
-            status: "ok",
-            version: "1.0.0",
-            timestamp: new Date().toISOString()
-          }, null, 2)
-        }
-      ]
-    };
-  }
-);
 
 // Run server
 async function runServer() {
-  console.log("Starting Dataset Creation MCP Server...");
+  console.error("Starting Dataset Creation MCP Server...");
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
@@ -993,7 +977,7 @@ runServer().catch(console.error);
 
 // Cleanup on exit
 process.on("SIGINT", async () => {
-  console.log("Shutting down...");
+  console.error("Shutting down...");
   await browser?.close();
   process.exit(0);
 });
