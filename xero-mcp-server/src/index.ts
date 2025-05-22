@@ -564,6 +564,10 @@ async function prepareTaxReturn(period: Period, taxType: string): Promise<Omit<T
   try {
     // Get all relevant transactions for the period
     const transactions = await xeroClient.accountingApi.getBankTransactions(
+      tenant.tenantId,
+      undefined,
+      `Date >= DateTime(${period.startDate}) && Date <= DateTime(${period.endDate})`,
+      "Date"
     );
 
     // Calculate tax totals with proper types
@@ -756,12 +760,13 @@ async function main(): Promise<void> {
 // Handle process termination
 process.on("SIGINT", async () => {
   console.error("Shutting down...");
+  await server.shutdown();
   process.exit(0);
 });
 
-process.stdin.on("close", () => {
+process.stdin.on("close", async () => {
   console.error("Xero MCP Server closed");
-  server.close();
+  await server.shutdown();
 });
 
 main().catch((error) => {
