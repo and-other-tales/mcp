@@ -200,123 +200,62 @@ export class DynamicPromptManager {
 
     // Add constraint-based objectives
     constraints.forEach(constraint => {
-      switch (constraint.type) {
-        case 'continuity':
-          objectives.push(`Ensure narrative continuity: ${constraint.explanation}`);
-          break;
-        case 'character':
-          objectives.push(`Maintain character consistency: ${constraint.explanation}`);
-          break;
-        case 'plot':
-          objectives.push(`Advance plot coherently: ${constraint.explanation}`);
-          break;
-        case 'style':
-          objectives.push(`Follow style guidelines: ${constraint.explanation}`);
-          break;
+      if (constraint.scope === 'local') {
+        objectives.push(`Address ${constraint.rule}`);
       }
     });
 
     return objectives;
   }
 
-  public updateContextHistory(focusId: string, context: PromptContext) {
-    const existing = this.contextHistory.get(focusId) || [];
-    existing.push(context);
-    this.contextHistory.set(focusId, existing);
-  }
-
-  public addGlobalConstraint(constraint: PromptConstraint) {
-    if (!this.activeConstraints.some(c => c.rule === constraint.rule)) {
-      this.activeConstraints.push(constraint);
-    }
-  }
-
-  public addTemplate(name: string, template: PromptTemplate) {
-    this.templates.set(name, template);
-  }
-
-  public integrateChunkAnalysis(analysis: ChunkAnalysis): ContextWindow {
-    const contextualElements: ContextualElement[] = analysis.contextualElements.map(element => ({
-      id: uuidv4(),
-      type: element.type,
-      content: element.name,
-      importance: element.significance,
-      relationToFocus: this.determineRelation(element)
-    }));
-
-    const midpoint = Math.floor(contextualElements.length / 2);
-    
-    return {
-      before: contextualElements.slice(0, midpoint),
-      after: contextualElements.slice(midpoint + 1),
-      currentFocus: {
-        type: 'scene', // Default to scene, can be determined by metadata
-        id: analysis.chunk.id,
-        content: analysis.chunk.content,
-        criticalElements: analysis.metadata.significantElements.events
-      }
-    };
-  }
-
-  private determineRelation(element: any): 'setup' | 'callback' | 'development' | 'resolution' {
-    // This would use more sophisticated logic in a full implementation
-    if (element.firstMention === element.lastMention) {
-      return 'development';
-    }
-    return element.firstMention ? 'callback' : 'setup';
-  }
-
-  /**
-   * Generates a prompt based on sequential analysis history
-   */
   public createSequentialPrompt(
     thought: StoryAnalysisThought,
-    thoughtHistory: StoryAnalysisThought[]
+    thoughtHistory: StoryAnalysisThought[] = []
   ): DynamicPrompt {
-    // Get relevant template based on thought purpose
-    const template = this.templates.get('analyze');
-    if (!template) {
-      throw new Error('Analysis template not found');
-    }
+    // Start with base prompt structure
+    const prompt: DynamicPrompt = {
+      basePrompt: 'Based on the previous analysis:\n[CONTEXT]\nProvide the next analytical step:\n[FOCUS]\nConsider:\n[CONSTRAINTS]',
+      contextualElements: [],
+      constraints: this.generateAnalysisConstraints(thought),
+      objectives: this.deriveAnalysisObjectives(thought)
+    };
 
-    // Build context from thought history
-    const contextElements = thoughtHistory.map(t => ({
-      type: this.determineThoughtType(t),
-      content: t.thought,
-      relevance: this.calculateThoughtRelevance(t, thought),
-      timeframe: 'past' as const
-    }));
+    // Add context from previous thoughts
+    thoughtHistory.forEach(t => {
+      if (t.thought && t.thoughtNumber < thought.thoughtNumber) {
+        prompt.contextualElements.push({
+          type: this.determineThoughtType(t),
+          content: t.thought,
+          relevance: this.calculateThoughtRelevance(t, thought),
+          timeframe: 'past'
+        });
+      }
+    });
 
-    // Add current narrative context if available
+    // Add narrative context elements
     if (thought.narrativeContext) {
       if (thought.narrativeContext.theme) {
-        contextElements.push(...thought.narrativeContext.theme.map(theme => ({
+        const themeElements = thought.narrativeContext.theme.map(theme => ({
           type: 'theme' as const,
           content: theme,
-          relevance: 1,
+          relevance: 1.0,
           timeframe: 'present' as const
-        })));
+        }));
+        prompt.contextualElements.push(...themeElements);
       }
 
       if (thought.narrativeContext.characters) {
-        contextElements.push(...thought.narrativeContext.characters.map(char => ({
+        const characterElements = thought.narrativeContext.characters.map(char => ({
           type: 'character' as const,
           content: char,
-          relevance: 1,
+          relevance: 1.0,
           timeframe: 'present' as const
-        })));
+        }));
+        prompt.contextualElements.push(...characterElements);
       }
     }
 
-    // Generate appropriate constraints based on analysis context
-    const analysisConstraints = this.generateAnalysisConstraints(thought);
-
-    return {
-      basePrompt: template.baseStructure,
-      contextualElements: contextElements,
-      constraints: [...this.activeConstraints, ...analysisConstraints],
-      objectives: this.deriveAnalysisObjectives(thought)
-    };
+    return prompt;
   }
 
   private determineThoughtType(thought: StoryAnalysisThought): 'character' | 'plot' | 'setting' | 'theme' {
@@ -328,7 +267,7 @@ export class DynamicPromptManager {
     if (narrativeContext?.plotPoints?.length) return 'plot';
     if (content.includes('theme') || narrativeContext?.theme?.length) return 'theme';
     if (content.includes('location') || content.includes('setting')) return 'setting';
-
+    
     return 'plot'; // Default to plot if unclear
   }
 
@@ -336,18 +275,17 @@ export class DynamicPromptManager {
     pastThought: StoryAnalysisThought,
     currentThought: StoryAnalysisThought
   ): number {
-    // Base relevance on temporal distance
     const thoughtDistance = currentThought.thoughtNumber - pastThought.thoughtNumber;
     const baseRelevance = Math.max(0.1, 1 - thoughtDistance / currentThought.totalThoughts);
 
-    // Increase relevance for directly related thoughts
+    // Higher relevance for direct revisions
     if (currentThought.revisesThought === pastThought.thoughtNumber) {
-      return Math.min(1, baseRelevance + 0.3);
+      return Math.min(1.0, baseRelevance + 0.3);
     }
 
-    // Check for shared narrative elements
+    // Add relevance based on shared elements
     const sharedElements = this.countSharedElements(pastThought, currentThought);
-    return Math.min(1, baseRelevance + (sharedElements * 0.1));
+    return Math.min(1.0, baseRelevance + (sharedElements * 0.1));
   }
 
   private countSharedElements(thought1: StoryAnalysisThought, thought2: StoryAnalysisThought): number {
@@ -357,13 +295,8 @@ export class DynamicPromptManager {
       const ctx1 = thought1.narrativeContext;
       const ctx2 = thought2.narrativeContext;
 
-      // Check shared characters
       count += this.countSharedArrayElements(ctx1.characters || [], ctx2.characters || []);
-
-      // Check shared themes
       count += this.countSharedArrayElements(ctx1.theme || [], ctx2.theme || []);
-
-      // Check shared plot points
       count += this.countSharedArrayElements(ctx1.plotPoints || [], ctx2.plotPoints || []);
     }
 
@@ -371,19 +304,17 @@ export class DynamicPromptManager {
   }
 
   private countSharedArrayElements(arr1: string[], arr2: string[]): number {
-    return arr1.filter(item => arr2.includes(item)).length;
+    const set1 = new Set(arr1);
+    return arr2.filter(item => set1.has(item)).length;
   }
 
   private generateAnalysisConstraints(thought: StoryAnalysisThought): PromptConstraint[] {
-    const constraints: PromptConstraint[] = [];
-
-    // Add sequential thinking constraints
-    constraints.push({
-      type: 'continuity',
-      rule: 'Sequential Analysis',
+    const constraints: PromptConstraint[] = [{
+      type: 'plot',
+      rule: 'Sequential Progression',
       explanation: 'Build upon previous analytical steps while maintaining logical progression',
       scope: 'global'
-    });
+    }];
 
     // Add revision-specific constraints
     if (thought.isRevision) {

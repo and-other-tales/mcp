@@ -1,3 +1,5 @@
+export type EmotionTone = 'positive' | 'negative' | 'neutral';
+
 export interface ThesaurusSuggestion {
     word: string;
     synonyms: string[];
@@ -6,7 +8,7 @@ export interface ThesaurusSuggestion {
 }
 
 export interface SynonymContext {
-    tone: 'positive' | 'negative' | 'neutral';
+    tone: EmotionTone;
     intensity: number;
     formality: 'formal' | 'informal';
 }
@@ -16,4 +18,5 @@ export interface NarrativeContext {
     perspective?: 'first-person' | 'third-person';
     timeframe?: 'historical' | 'contemporary' | 'future';
     style?: string;
+    dominantEmotion?: EmotionTone;
 }

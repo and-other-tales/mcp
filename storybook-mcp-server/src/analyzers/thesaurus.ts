@@ -1,9 +1,9 @@
 import nlp from 'compromise';
-import type { ThesaurusSuggestion, SynonymContext, NarrativeContext } from '../types';
+import type { ThesaurusSuggestion, SynonymContext, NarrativeContext, EmotionTone } from '../types/thesaurus';
 import logger from '../utils/logger';
 
 export class ContextualThesaurus {
-  private emotionKeywords = {
+  private emotionKeywords: Record<EmotionTone, string[]> = {
     positive: ['happy', 'joyful', 'excited', 'peaceful', 'content'],
     negative: ['sad', 'angry', 'fearful', 'anxious', 'frustrated'],
     neutral: ['contemplative', 'thoughtful', 'observant', 'analytical']
@@ -39,22 +39,18 @@ export class ContextualThesaurus {
   }
 
   /**
-   * Analyzes the narrative context of a scene
+   * Analyzes the narrative context of a scene 
    */
   private analyzeNarrativeContext(text: string): NarrativeContext {
     const doc = nlp(text);
-    
     const emotions = this.detectEmotions(doc);
-    const tone = this.detectTone(doc);
-    const tense = this.detectTense(doc);
-    const pov = this.detectPOV(doc);
 
     return {
-      dominantEmotion: emotions.dominant,
-      emotionalIntensity: emotions.intensity,
-      tone,
-      tense,
-      pov
+      genre: 'narrative',
+      perspective: this.detectPerspective(doc),
+      timeframe: this.detectTimeframe(doc),
+      style: 'standard',
+      dominantEmotion: emotions.dominant
     };
   }
 
@@ -63,14 +59,40 @@ export class ContextualThesaurus {
    */
   private analyzeTermContext(term: string, context: string): SynonymContext {
     const doc = nlp(context);
+    const emotions = this.detectEmotions(doc);
     
     return {
-      isDialogue: this.isInDialogue(context),
-      isAction: this.isInAction(doc),
-      isDescription: this.isInDescription(doc),
-      grammaticalRole: this.determineGrammaticalRole(term, doc),
-      subjectMatter: this.determineSubjectMatter(doc)
+      tone: emotions.dominant,
+      intensity: emotions.intensity,
+      formality: this.detectFormality(doc)
     };
+  }
+
+  private detectPerspective(doc: any): 'first-person' | 'third-person' {
+    // Simple POV detection
+    if (doc.match('I|me|my|we|our').length > 0) {
+      return 'first-person';
+    }
+    return 'third-person';
+  }
+
+  private detectTimeframe(doc: any): 'historical' | 'contemporary' | 'future' {
+    // Simple timeframe detection based on verb tenses and time markers
+    if (doc.match('will|future|tomorrow|next|soon').length > 0) {
+      return 'future';
+    }
+    if (doc.match('past|yesterday|ago|before|ancient|historical').length > 0) {
+      return 'historical';
+    }
+    return 'contemporary';
+  }
+
+  private detectFormality(doc: any): 'formal' | 'informal' {
+    // Simple formality detection
+    const informalMarkers = doc.match('gonna|wanna|like|yeah|hey|cool').length;
+    const formalMarkers = doc.match('shall|whom|therefore|indeed|nevertheless').length;
+    
+    return formalMarkers > informalMarkers ? 'formal' : 'informal';
   }
 
   /**
@@ -107,71 +129,28 @@ export class ContextualThesaurus {
     termContext: SynonymContext,
     narrativeContext: NarrativeContext
   ): ThesaurusSuggestion[] {
-    return synonyms
-      .map(synonym => ({
-        word: synonym,
-        contextScore: this.calculateContextScore(synonym, termContext, narrativeContext),
-        usageNotes: this.generateUsageNotes(synonym, termContext, narrativeContext)
-      }))
-      .sort((a, b) => b.contextScore - a.contextScore);
-  }
-
-  /**
-   * Calculates how appropriate a synonym is for the given context
-   */
-  private calculateContextScore(
-    synonym: string,
-    termContext: SynonymContext,
-    narrativeContext: NarrativeContext
-  ): number {
-    let score = 1.0;
-
-    // Adjust score based on dialogue context
-    if (termContext.isDialogue) {
-      score *= this.toneCategories.casual.has(synonym) ? 1.2 : 0.8;
-    }
-
-    // Adjust for emotional intensity
-    if (narrativeContext.emotionalIntensity > 0.7) {
-      score *= this.toneCategories.emotional.has(synonym) ? 1.3 : 0.7;
-    }
-
-    // Adjust for formal/informal tone
-    if (narrativeContext.tone === 'formal') {
-      score *= this.toneCategories.formal.has(synonym) ? 1.2 : 0.8;
-    }
-
-    return score;
-  }
-
-  /**
-   * Generates usage notes for a synonym in the given context
-   */
-  private generateUsageNotes(
-    synonym: string,
-    termContext: SynonymContext,
-    narrativeContext: NarrativeContext
-  ): string {
-    const notes: string[] = [];
-
-    if (this.toneCategories.formal.has(synonym)) {
-      notes.push('More formal register');
-    }
-    if (this.toneCategories.emotional.has(synonym)) {
-      notes.push('Implies stronger emotion');
-    }
-    if (narrativeContext.dominantEmotion && 
-        this.emotionKeywords[narrativeContext.dominantEmotion].includes(synonym)) {
-      notes.push('Matches emotional tone of scene');
-    }
-
-    return notes.join('. ');
+    return synonyms.map(word => ({
+      word,
+      synonyms: this.getBaseSynonyms(word),
+      context: {
+        tone: termContext.tone,
+        intensity: termContext.intensity,
+        formality: termContext.formality
+      },
+      narrativeContext: {
+        genre: narrativeContext.genre,
+        perspective: narrativeContext.perspective,
+        timeframe: narrativeContext.timeframe,
+        style: narrativeContext.style,
+        dominantEmotion: narrativeContext.dominantEmotion
+      }
+    }));
   }
 
   /**
    * Detects the emotional content of text
    */
-  private detectEmotions(doc: any): { dominant: string; intensity: number } {
+  private detectEmotions(doc: any): { dominant: EmotionTone; intensity: number } {
     // Implementation would use sentiment analysis
     // Returning placeholder for now
     return { dominant: 'neutral', intensity: 0.5 };
